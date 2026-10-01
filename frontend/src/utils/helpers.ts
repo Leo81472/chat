@@ -20,6 +20,7 @@ export function formatDate(dateString: string): string {
 export function getChatDisplayName(chat: Chat, _currentUserId: string): string {
   if (chat.type === 'public') return '公共聊天';
   if (chat.type === 'group') return chat.name || '群聊';
+  if (chat.type === 'private' && chat.other_user) return chat.other_user.username;
   return '私聊';
 }
 

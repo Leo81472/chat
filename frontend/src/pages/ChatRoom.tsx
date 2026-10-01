@@ -16,6 +16,7 @@ export default function ChatRoom() {
   const [showFriends, setShowFriends] = useState(false);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [friends, setFriends] = useState<Friend[]>([]);
+  const [showDissolveConfirm, setShowDissolveConfirm] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -150,6 +151,34 @@ export default function ChatRoom() {
     }
   };
 
+  const startPrivateChat = async (friendId: string) => {
+    try {
+      const res = await api.post('/api/chats/private', { friendId });
+      const chat = res.data.chat;
+      setChats(prev => {
+        const exists = prev.find(c => c.id === chat.id);
+        if (exists) return prev;
+        return [chat, ...prev];
+      });
+      setActiveChat(chat);
+      setShowFriends(false);
+    } catch (error) {
+      console.error('Failed to start private chat', error);
+    }
+  };
+
+  const dissolveGroup = async () => {
+    if (!activeChat || activeChat.type !== 'group') return;
+    try {
+      await api.delete(`/api/chats/${activeChat.id}`);
+      setChats(prev => prev.filter(c => c.id !== activeChat.id));
+      setActiveChat(null);
+      setShowDissolveConfirm(false);
+    } catch (error) {
+      console.error('Failed to dissolve group', error);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
@@ -177,7 +206,7 @@ export default function ChatRoom() {
                 className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
                 title="创建群聊"
               >
-                
+                👥
               </button>
               <button
                 onClick={logout}
@@ -221,17 +250,27 @@ export default function ChatRoom() {
         {activeChat ? (
           <>
             <div className="p-4 border-b border-slate-700 bg-slate-800">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">{getChatIcon(activeChat)}</span>
-                <div>
-                  <h3 className="text-white font-medium">
-                    {getChatDisplayName(activeChat, user?.id || '')}
-                  </h3>
-                  <p className="text-sm text-slate-400">
-                    {activeChat.type === 'public' ? '公共聊天室' : 
-                     activeChat.type === 'group' ? `${activeChat.member_count || 0} 名成员` : '私聊'}
-                  </p>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">{getChatIcon(activeChat)}</span>
+                  <div>
+                    <h3 className="text-white font-medium">
+                      {getChatDisplayName(activeChat, user?.id || '')}
+                    </h3>
+                    <p className="text-sm text-slate-400">
+                      {activeChat.type === 'public' ? '公共聊天室' : 
+                       activeChat.type === 'group' ? `${activeChat.member_count || 0} 名成员` : '私聊'}
+                    </p>
+                  </div>
                 </div>
+                {activeChat.type === 'group' && activeChat.created_by === user?.id && (
+                  <button
+                    onClick={() => setShowDissolveConfirm(true)}
+                    className="px-3 py-1 text-sm text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded-lg transition-colors"
+                  >
+                    解散群聊
+                  </button>
+                )}
               </div>
             </div>
 
@@ -303,6 +342,7 @@ export default function ChatRoom() {
           onFriendAdded={() => {
             api.get('/api/friends').then(res => setFriends(res.data.friends || []));
           }}
+          onStartChat={startPrivateChat}
         />
       )}
 
@@ -312,6 +352,32 @@ export default function ChatRoom() {
           onClose={() => setShowCreateGroup(false)}
           onCreate={handleCreateGroup}
         />
+      )}
+
+      {showDissolveConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowDissolveConfirm(false)}>
+          <div 
+            className="bg-slate-800 rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-white mb-2">确认解散群聊</h3>
+            <p className="text-slate-400 mb-6">解散后所有聊天记录将被删除，此操作不可恢复。</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDissolveConfirm(false)}
+                className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={dissolveGroup}
+                className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+              >
+                确认解散
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

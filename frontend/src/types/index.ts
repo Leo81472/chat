@@ -16,6 +16,7 @@ export interface Chat {
   created_by: string;
   created_at: string;
   member_count?: number;
+  other_user?: { id: string; username: string };
 }
 
 export interface Message {

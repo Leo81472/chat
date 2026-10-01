@@ -17,8 +17,8 @@ app.get('/', (c) => {
   return c.json({ name: 'Chat API', version: '1.0.0' });
 });
 
-app.route('/api', authHandler);
-app.route('/api', chatHandler);
-app.route('/api', friendsHandler);
+app.route('/', authHandler);
+app.route('/', chatHandler);
+app.route('/', friendsHandler);
 
 export default app;

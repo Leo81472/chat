@@ -2,7 +2,7 @@ import type { Env } from '../types';
 
 export class ChatRoom implements DurableObject {
   private storage: DurableObjectStorage;
-  private sessions: Map<string, WebSocket>;
+  private sessions: Map<string, { ws: WebSocket; chatIds: Set<string> }>;
   private env: Env;
 
   constructor(state: DurableObjectState, env: Env) {
@@ -35,7 +35,7 @@ export class ChatRoom implements DurableObject {
   private handleWebSocket(ws: WebSocket, userId: string) {
     ws.accept();
 
-    this.sessions.set(userId, ws);
+    this.sessions.set(userId, { ws, chatIds: new Set() });
 
     ws.addEventListener('message', async (event) => {
       try {
@@ -44,20 +44,34 @@ export class ChatRoom implements DurableObject {
         if (data.type === 'message') {
           await this.storage.put(`message:${Date.now()}`, data);
           
+          const chatId = data.chat_id;
+          
           this.sessions.forEach((session, sessionId) => {
-            if (sessionId !== userId && session.readyState === WebSocket.OPEN) {
-              session.send(JSON.stringify({
-                type: 'message',
-                id: Date.now().toString(),
-                chat_id: data.chat_id,
-                chat_type: data.chat_type || 'public',
-                user_id: data.user_id,
-                username: data.username,
-                content: data.content,
-                timestamp: data.timestamp || new Date().toISOString(),
-              }));
+            if (sessionId !== userId && session.ws.readyState === WebSocket.OPEN) {
+              if (chatId && session.chatIds.has(chatId)) {
+                session.ws.send(JSON.stringify({
+                  type: 'message',
+                  id: Date.now().toString(),
+                  chat_id: chatId,
+                  chat_type: data.chat_type || 'public',
+                  user_id: data.user_id,
+                  username: data.username,
+                  content: data.content,
+                  timestamp: data.timestamp || new Date().toISOString(),
+                }));
+              }
             }
           });
+        } else if (data.type === 'join') {
+          const session = this.sessions.get(userId);
+          if (session && data.chat_id) {
+            session.chatIds.add(data.chat_id);
+          }
+        } else if (data.type === 'leave') {
+          const session = this.sessions.get(userId);
+          if (session && data.chat_id) {
+            session.chatIds.delete(data.chat_id);
+          }
         } else if (data.type === 'ping') {
           ws.send(JSON.stringify({ type: 'pong' }));
         }
