@@ -1,3 +1,5 @@
+import type { Env } from '../types';
+
 export class ChatRoom implements DurableObject {
   private storage: DurableObjectStorage;
   private sessions: Map<string, WebSocket>;
@@ -72,10 +74,4 @@ export class ChatRoom implements DurableObject {
       this.sessions.delete(userId);
     });
   }
-}
-
-interface Env {
-  DB: D1Database;
-  JWT_SECRET: string;
-  CHAT_ROOM: DurableObjectNamespace;
 }

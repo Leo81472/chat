@@ -11,7 +11,7 @@ const app = new Hono<{
   };
 }>();
 
-app.use('*', verifyAuth);
+app.use('/api/*', verifyAuth);
 
 app.get('/api/chats/public', async (c) => {
   const chat = await c.env.DB.prepare(

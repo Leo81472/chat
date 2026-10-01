@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'https://chat-backend.jjl2966484564.workers.dev',
+  baseURL: import.meta.env.VITE_API_URL || 'https://quickchat-api.cc.cd',
   headers: {
     'Content-Type': 'application/json',
   },

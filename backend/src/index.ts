@@ -5,13 +5,7 @@ import chatHandler from './handlers/chat';
 import friendsHandler from './handlers/friends';
 export { ChatRoom } from './ws/chat-room';
 
-const app = new Hono<{
-  Bindings: {
-    DB: D1Database;
-    JWT_SECRET: string;
-    CHAT_ROOM: DurableObjectNamespace;
-  };
-}>();
+const app = new Hono();
 
 app.use('*', cors({
   origin: '*',
@@ -19,12 +13,12 @@ app.use('*', cors({
   allowHeaders: ['Content-Type', 'Authorization'],
 }));
 
-app.route('/', authHandler);
-app.route('/', chatHandler);
-app.route('/', friendsHandler);
-
 app.get('/', (c) => {
   return c.json({ name: 'Chat API', version: '1.0.0' });
 });
+
+app.route('/api', authHandler);
+app.route('/api', chatHandler);
+app.route('/api', friendsHandler);
 
 export default app;

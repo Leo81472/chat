@@ -11,11 +11,6 @@ const app = new Hono<{
   };
 }>();
 
-app.use('*', async (c, next) => {
-  await initDB(c.env.DB);
-  await next();
-});
-
 const registerSchema = z.object({
   username: z.string().min(3).max(20),
   password: z.string().min(6).max(50),

@@ -43,3 +43,9 @@ export interface WebSocketMessage {
   username?: string;
   timestamp?: string;
 }
+
+export interface Env {
+  DB: D1Database;
+  JWT_SECRET: string;
+  CHAT_ROOM: DurableObjectNamespace;
+}
