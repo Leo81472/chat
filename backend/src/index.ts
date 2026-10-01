@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import authHandler from './handlers/auth';
 import chatHandler from './handlers/chat';
 import friendsHandler from './handlers/friends';
+export { ChatRoom } from './ws/chat-room';
 
 const app = new Hono<{
   Bindings: {
