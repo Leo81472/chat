@@ -6,10 +6,9 @@ interface FriendsPanelProps {
   friends: Friend[];
   onClose: () => void;
   onFriendAdded: () => void;
-  onStartChat: (friendId: string) => void;
 }
 
-export default function FriendsPanel({ friends, onClose, onFriendAdded, onStartChat }: FriendsPanelProps) {
+export default function FriendsPanel({ friends, onClose, onFriendAdded }: FriendsPanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
@@ -102,19 +101,18 @@ export default function FriendsPanel({ friends, onClose, onFriendAdded, onStartC
             <p className="text-slate-500 text-center py-4">暂无好友</p>
           ) : (
             friends.map((friend) => (
-              <button
+              <div
                 key={friend.id}
-                onClick={() => onStartChat(friend.id)}
-                className="w-full flex items-center gap-3 py-3 border-b border-slate-700/50 last:border-0 hover:bg-slate-700/50 rounded-lg px-2 transition-colors text-left"
+                className="flex items-center gap-3 py-3 border-b border-slate-700/50 last:border-0 px-2"
               >
                 <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-medium">
                   {friend.username[0].toUpperCase()}
                 </div>
                 <div className="flex-1">
                   <div className="text-white">{friend.username}</div>
-                  <div className="text-xs text-slate-500">点击开始私聊</div>
+                  <div className="text-xs text-slate-500">ID: {friend.id}</div>
                 </div>
-              </button>
+              </div>
             ))
           )}
         </div>

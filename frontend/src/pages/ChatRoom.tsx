@@ -394,7 +394,7 @@ export default function ChatRoom() {
             api.get('/api/friends').then(res => setFriends(res.data.friends || []));
             api.get('/api/chats').then(res => setChats(res.data.chats || []));
           }}
-          onStartChat={startPrivateChat}
+
         />
       )}
 
