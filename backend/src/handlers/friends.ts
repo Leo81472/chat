@@ -9,6 +9,10 @@ const app = new Hono<{
     DB: D1Database;
     JWT_SECRET: string;
   };
+  Variables: {
+    userId: string;
+    username: string;
+  };
 }>();
 
 app.use('/api/*', verifyAuth);
@@ -39,7 +43,7 @@ app.post('/api/friends', zValidator('json', addFriendSchema), async (c) => {
     return c.json({ error: '不能添加自己为好友' }, 400);
   }
   
-  const friend = await c.env.DB.prepare("SELECT id FROM users WHERE id = ?").bind(friendId).first();
+  const friend = await c.env.DB.prepare("SELECT id, username FROM users WHERE id = ?").bind(friendId).first<any>();
   if (!friend) {
     return c.json({ error: '用户不存在' }, 404);
   }
@@ -52,12 +56,34 @@ app.post('/api/friends', zValidator('json', addFriendSchema), async (c) => {
     return c.json({ error: '已经是好友了' }, 400);
   }
   
-  const id = generateId();
+  const friendshipId = generateId();
   await c.env.DB.prepare(
     "INSERT INTO friendships (id, user_id, friend_id) VALUES (?, ?, ?)"
-  ).bind(id, userId, friendId).run();
+  ).bind(friendshipId, userId, friendId).run();
   
-  return c.json({ success: true });
+  const existingChat = await c.env.DB.prepare(
+    `SELECT c.id FROM chats c
+     JOIN chat_members cm1 ON c.id = cm1.chat_id AND cm1.user_id = ?
+     JOIN chat_members cm2 ON c.id = cm2.chat_id AND cm2.user_id = ?
+     WHERE c.type = 'private'`
+  ).bind(userId, friendId).first();
+  
+  if (!existingChat) {
+    const chatId = generateId();
+    await c.env.DB.prepare(
+      "INSERT INTO chats (id, type, name, created_by) VALUES (?, 'private', '', ?)"
+    ).bind(chatId, userId).run();
+    
+    await c.env.DB.prepare(
+      "INSERT INTO chat_members (chat_id, user_id) VALUES (?, ?)"
+    ).bind(chatId, userId).run();
+    
+    await c.env.DB.prepare(
+      "INSERT INTO chat_members (chat_id, user_id) VALUES (?, ?)"
+    ).bind(chatId, friendId).run();
+  }
+  
+  return c.json({ success: true, friend: { id: friend.id, username: friend.username } });
 });
 
 app.delete('/api/friends/:friendId', async (c) => {

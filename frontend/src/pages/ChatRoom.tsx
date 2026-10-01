@@ -20,6 +20,9 @@ export default function ChatRoom() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const activeChatRef = useRef<Chat | null>(null);
+
+  activeChatRef.current = activeChat;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -33,20 +36,23 @@ export default function ChatRoom() {
     if (!user || !token) return;
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws?token=${token}&userId=${user.id}`;
+    const wsUrl = `${protocol}//quickchat-api.cc.cd/ws?token=${token}&userId=${user.id}`;
     
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
       console.log('WebSocket connected');
+      if (activeChatRef.current) {
+        ws.send(JSON.stringify({ type: 'join', chat_id: activeChatRef.current.id }));
+      }
     };
 
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === 'message' && data.chat_id === activeChat?.id) {
-          setMessages(prev => [...prev, {
+        if (data.type === 'message') {
+          const newMsg: Message = {
             id: data.id || Date.now().toString(),
             chat_id: data.chat_id!,
             chat_type: data.chat_type || 'public',
@@ -54,7 +60,14 @@ export default function ChatRoom() {
             sender_username: data.username!,
             content: data.content!,
             created_at: data.timestamp || new Date().toISOString(),
-          }]);
+          };
+          setMessages(prev => {
+            const exists = prev.some(m => m.id === newMsg.id);
+            if (exists) return prev;
+            return [...prev, newMsg];
+          });
+        } else if (data.type === 'pong') {
+          console.log('Pong received');
         }
       } catch (e) {
         console.error('Failed to parse WebSocket message', e);
@@ -62,21 +75,30 @@ export default function ChatRoom() {
     };
 
     ws.onclose = () => {
-      console.log('WebSocket disconnected');
+      console.log('WebSocket disconnected, reconnecting...');
       setTimeout(connectWebSocket, 3000);
     };
 
     ws.onerror = (error) => {
       console.error('WebSocket error', error);
     };
-  }, [user, token, activeChat]);
+  }, [user, token]);
 
   useEffect(() => {
     connectWebSocket();
     return () => {
+      if (activeChatRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'leave', chat_id: activeChatRef.current.id }));
+      }
       wsRef.current?.close();
     };
   }, [connectWebSocket]);
+
+  useEffect(() => {
+    if (activeChat && wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'join', chat_id: activeChat.id }));
+    }
+  }, [activeChat]);
 
   useEffect(() => {
     const fetchChats = async () => {
@@ -107,28 +129,44 @@ export default function ChatRoom() {
         }
       };
       fetchMessages();
+    } else {
+      setMessages([]);
     }
   }, [activeChat]);
 
   const sendMessage = async () => {
-    if (!newMessage.trim() || !activeChat) return;
+    if (!newMessage.trim() || !activeChat || !user) return;
 
     const content = newMessage.trim();
     setNewMessage('');
+
+    const tempId = 'temp-' + Date.now();
+    const tempMsg: Message = {
+      id: tempId,
+      chat_id: activeChat.id,
+      chat_type: activeChat.type,
+      sender_id: user.id,
+      sender_username: user.username,
+      content,
+      created_at: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, tempMsg]);
 
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'message',
         chat_id: activeChat.id,
+        chat_type: activeChat.type,
         content,
-        user_id: user?.id,
-        username: user?.username,
+        user_id: user.id,
+        username: user.username,
         timestamp: new Date().toISOString(),
       }));
     }
 
     try {
-      await api.post(`/api/chats/${activeChat.id}/messages`, { content });
+      const res = await api.post(`/api/chats/${activeChat.id}/messages`, { content });
+      setMessages(prev => prev.map(m => m.id === tempId ? res.data.message : m));
     } catch (error) {
       console.error('Failed to send message', error);
     }
@@ -239,6 +277,7 @@ export default function ChatRoom() {
                 <div className="text-sm text-slate-400">
                   {chat.type === 'group' && `${chat.member_count || 0} 成员`}
                   {chat.type === 'public' && '所有人可见'}
+                  {chat.type === 'private' && '私聊'}
                 </div>
               </div>
             </button>
@@ -341,6 +380,7 @@ export default function ChatRoom() {
           onClose={() => setShowFriends(false)}
           onFriendAdded={() => {
             api.get('/api/friends').then(res => setFriends(res.data.friends || []));
+            api.get('/api/chats').then(res => setChats(res.data.chats || []));
           }}
           onStartChat={startPrivateChat}
         />
