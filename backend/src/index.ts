@@ -7,6 +7,7 @@ import { ChatRoom } from './ws/chat-room';
 
 const app = new Hono<{
   Bindings: {
+    DB: D1Database;
     CHAT_ROOM: DurableObjectNamespace;
   };
 }>();

@@ -58,6 +58,7 @@ export class ChatRoom implements DurableObject {
             username: data.username,
             content: data.content,
             timestamp: data.timestamp || new Date().toISOString(),
+            tempId: data.tempId,
           };
           
           this.sessions.forEach((session, sessionId) => {
