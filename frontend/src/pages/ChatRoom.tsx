@@ -201,22 +201,6 @@ export default function ChatRoom() {
     }
   };
 
-  const startPrivateChat = async (friendId: string) => {
-    try {
-      const res = await api.post('/api/chats/private', { friendId });
-      const chat = res.data.chat;
-      setChats(prev => {
-        const exists = prev.find(c => c.id === chat.id);
-        if (exists) return prev;
-        return [chat, ...prev];
-      });
-      setActiveChat(chat);
-      setShowFriends(false);
-    } catch (error) {
-      console.error('Failed to start private chat', error);
-    }
-  };
-
   const dissolveGroup = async () => {
     if (!activeChat || activeChat.type !== 'group') return;
     try {
