@@ -1,4 +1,4 @@
-import { Chat, Message } from '../types';
+import { Chat } from '../types';
 
 export function formatTime(dateString: string): string {
   const date = new Date(dateString);
@@ -17,7 +17,7 @@ export function formatDate(dateString: string): string {
   return date.toLocaleDateString('zh-CN');
 }
 
-export function getChatDisplayName(chat: Chat, currentUserId: string): string {
+export function getChatDisplayName(chat: Chat, _currentUserId: string): string {
   if (chat.type === 'public') return '公共聊天';
   if (chat.type === 'group') return chat.name || '群聊';
   return '私聊';
