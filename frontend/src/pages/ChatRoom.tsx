@@ -140,18 +140,6 @@ export default function ChatRoom() {
     const content = newMessage.trim();
     setNewMessage('');
 
-    const tempId = 'temp-' + Date.now();
-    const tempMsg: Message = {
-      id: tempId,
-      chat_id: activeChat.id,
-      chat_type: activeChat.type,
-      sender_id: user.id,
-      sender_username: user.username,
-      content,
-      created_at: new Date().toISOString(),
-    };
-    setMessages(prev => [...prev, tempMsg]);
-
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'message',
@@ -162,13 +150,13 @@ export default function ChatRoom() {
         username: user.username,
         timestamp: new Date().toISOString(),
       }));
-    }
-
-    try {
-      const res = await api.post(`/api/chats/${activeChat.id}/messages`, { content });
-      setMessages(prev => prev.map(m => m.id === tempId ? res.data.message : m));
-    } catch (error) {
-      console.error('Failed to send message', error);
+    } else {
+      try {
+        const res = await api.post(`/api/chats/${activeChat.id}/messages`, { content });
+        setMessages(prev => [...prev, res.data.message]);
+      } catch (error) {
+        console.error('Failed to send message', error);
+      }
     }
   };
 

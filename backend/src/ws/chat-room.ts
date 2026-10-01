@@ -42,23 +42,28 @@ export class ChatRoom implements DurableObject {
         const data = JSON.parse(event.data as string);
         
         if (data.type === 'message') {
-          await this.storage.put(`message:${Date.now()}`, data);
+          const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          
+          await this.env.DB.prepare(
+            "INSERT INTO messages (id, chat_id, chat_type, sender_id, content) VALUES (?, ?, ?, ?, ?)"
+          ).bind(messageId, data.chat_id, data.chat_type || 'public', data.user_id, data.content).run();
           
           const chatId = data.chat_id;
+          const broadcastMsg = {
+            type: 'message',
+            id: messageId,
+            chat_id: chatId,
+            chat_type: data.chat_type || 'public',
+            user_id: data.user_id,
+            username: data.username,
+            content: data.content,
+            timestamp: data.timestamp || new Date().toISOString(),
+          };
           
           this.sessions.forEach((session, sessionId) => {
-            if (sessionId !== userId && session.ws.readyState === WebSocket.OPEN) {
+            if (session.ws.readyState === WebSocket.OPEN) {
               if (chatId && session.chatIds.has(chatId)) {
-                session.ws.send(JSON.stringify({
-                  type: 'message',
-                  id: Date.now().toString(),
-                  chat_id: chatId,
-                  chat_type: data.chat_type || 'public',
-                  user_id: data.user_id,
-                  username: data.username,
-                  content: data.content,
-                  timestamp: data.timestamp || new Date().toISOString(),
-                }));
+                session.ws.send(JSON.stringify(broadcastMsg));
               }
             }
           });

@@ -31,6 +31,10 @@ app.post('/api/auth/register', zValidator('json', registerSchema), async (c) => 
     "INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)"
   ).bind(id, username, password_hash).run();
   
+  await c.env.DB.prepare(
+    "INSERT INTO chat_members (chat_id, user_id) VALUES ('public', ?)"
+  ).bind(id).run();
+  
   const token = generateToken({ id, username }, c.env.JWT_SECRET);
   
   return c.json({
