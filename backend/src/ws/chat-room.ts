@@ -52,6 +52,19 @@ export class ChatRoom implements DurableObject {
 
     this.sessions.set(userId, { ws, chatIds: new Set(), userId });
 
+    // 发送所有已在线用户的状态给新用户
+    this.sessions.forEach((session, sessionId) => {
+      if (sessionId !== userId && session.ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'status',
+          user_id: sessionId,
+          status: 'online',
+          timestamp: new Date().toISOString(),
+        }));
+      }
+    });
+
+    // 广播新用户上线给所有已连接的用户
     this.broadcastStatus(userId, 'online');
 
     ws.addEventListener('message', async (event) => {

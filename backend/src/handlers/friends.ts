@@ -56,10 +56,26 @@ app.post('/api/friends', zValidator('json', addFriendSchema), async (c) => {
     return c.json({ error: '已经是好友了' }, 400);
   }
   
-  const friendshipId = generateId();
+  // 检查反向关系是否已存在
+  const reverseExisting = await c.env.DB.prepare(
+    "SELECT * FROM friendships WHERE user_id = ? AND friend_id = ?"
+  ).bind(friendId, userId).first();
+  
+  if (reverseExisting) {
+    return c.json({ error: '已经是好友了' }, 400);
+  }
+  
+  const friendshipId1 = generateId();
+  const friendshipId2 = generateId();
+  
+  // 创建双向好友关系
   await c.env.DB.prepare(
     "INSERT INTO friendships (id, user_id, friend_id) VALUES (?, ?, ?)"
-  ).bind(friendshipId, userId, friendId).run();
+  ).bind(friendshipId1, userId, friendId).run();
+  
+  await c.env.DB.prepare(
+    "INSERT INTO friendships (id, user_id, friend_id) VALUES (?, ?, ?)"
+  ).bind(friendshipId2, friendId, userId).run();
   
   const existingChat = await c.env.DB.prepare(
     `SELECT c.id FROM chats c
@@ -90,9 +106,14 @@ app.delete('/api/friends/:friendId', async (c) => {
   const userId = c.get('userId');
   const friendId = c.req.param('friendId');
   
+  // 双向删除好友关系
   await c.env.DB.prepare(
     "DELETE FROM friendships WHERE user_id = ? AND friend_id = ?"
   ).bind(userId, friendId).run();
+  
+  await c.env.DB.prepare(
+    "DELETE FROM friendships WHERE user_id = ? AND friend_id = ?"
+  ).bind(friendId, userId).run();
   
   return c.json({ success: true });
 });

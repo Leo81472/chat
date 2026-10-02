@@ -27,6 +27,7 @@ export default function ChatRoom() {
   const [contextMenu, setContextMenu] = useState<{ msg: Message; x: number; y: number } | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -85,6 +86,11 @@ export default function ChatRoom() {
             if (exists) return prev;
             return [...prev, newMsg];
           });
+          
+          // 发送桌面通知（如果不是自己发的消息，且当前不在该聊天窗口）
+          if (data.user_id !== user?.id && data.chat_id !== activeChatRef.current?.id) {
+            sendNotification(`${data.username}`, data.content);
+          }
         } else if (data.type === 'edit') {
           setMessages(prev => prev.map(m => m.id === data.id ? { ...m, content: data.content, original_content: data.original_content, edited_at: data.edited_at } : m));
         } else if (data.type === 'delete') {
@@ -144,6 +150,24 @@ export default function ChatRoom() {
       });
     }
   }, [activeChat]);
+
+  useEffect(() => {
+    // 请求通知权限
+    if ('Notification' in window && notificationPermission === 'default') {
+      Notification.requestPermission().then(permission => {
+        setNotificationPermission(permission);
+      });
+    }
+  }, []);
+
+  const sendNotification = (title: string, body: string) => {
+    if ('Notification' in window && notificationPermission === 'granted') {
+      new Notification(title, {
+        body,
+        icon: '/vite.svg',
+      });
+    }
+  };
 
   useEffect(() => {
     const fetchChats = async () => {
