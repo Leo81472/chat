@@ -17,6 +17,16 @@ export default function ChatRoom() {
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [friends, setFriends] = useState<Friend[]>([]);
   const [showDissolveConfirm, setShowDissolveConfirm] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [showMembersPanel, setShowMembersPanel] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+  const [editContent, setEditContent] = useState('');
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyMessage, setHistoryMessage] = useState<Message | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ msg: Message; x: number; y: number } | null>(null);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -75,6 +85,25 @@ export default function ChatRoom() {
             if (exists) return prev;
             return [...prev, newMsg];
           });
+        } else if (data.type === 'edit') {
+          setMessages(prev => prev.map(m => m.id === data.id ? { ...m, content: data.content, original_content: data.original_content, edited_at: data.edited_at } : m));
+        } else if (data.type === 'delete') {
+          setMessages(prev => prev.map(m => m.id === data.message_id ? { ...m, content: '此消息已被删除', is_deleted: true } : m));
+        } else if (data.type === 'status') {
+          setOnlineUsers(prev => {
+            const next = new Set(prev);
+            if (data.status === 'online') {
+              next.add(data.user_id);
+            } else {
+              next.delete(data.user_id);
+            }
+            return next;
+          });
+        } else if (data.type === 'unread') {
+          setUnreadCounts(prev => ({
+            ...prev,
+            [data.chat_id]: (prev[data.chat_id] || 0) + 1,
+          }));
         } else if (data.type === 'pong') {
           console.log('Pong received');
         }
@@ -106,18 +135,31 @@ export default function ChatRoom() {
   useEffect(() => {
     if (activeChat && wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'join', chat_id: activeChat.id }));
+      api.post(`/api/unread/${activeChat.id}/read`).then(() => {
+        setUnreadCounts(prev => {
+          const next = { ...prev };
+          delete next[activeChat.id];
+          return next;
+        });
+      });
     }
   }, [activeChat]);
 
   useEffect(() => {
     const fetchChats = async () => {
       try {
-        const [chatsRes, friendsRes] = await Promise.all([
+        const [chatsRes, friendsRes, unreadRes] = await Promise.all([
           api.get('/api/chats'),
           api.get('/api/friends'),
+          api.get('/api/unread'),
         ]);
         setChats(chatsRes.data.chats || []);
         setFriends(friendsRes.data.friends || []);
+        const unreadMap: Record<string, number> = {};
+        (unreadRes.data.unread || []).forEach((u: any) => {
+          unreadMap[u.chat_id] = u.count;
+        });
+        setUnreadCounts(unreadMap);
       } catch (error) {
         console.error('Failed to fetch chats', error);
       } finally {
@@ -213,6 +255,73 @@ export default function ChatRoom() {
     }
   };
 
+  const leaveGroup = async () => {
+    if (!activeChat) return;
+    try {
+      await api.post(`/api/chats/${activeChat.id}/leave`);
+      setChats(prev => prev.filter(c => c.id !== activeChat.id));
+      setActiveChat(null);
+      setShowLeaveConfirm(false);
+    } catch (error) {
+      console.error('Failed to leave group', error);
+    }
+  };
+
+  const openEditModal = (msg: Message) => {
+    setEditingMessage(msg);
+    setEditContent(msg.content);
+    setShowEditModal(true);
+    setContextMenu(null);
+  };
+
+  const saveEdit = async () => {
+    if (!editingMessage || !editContent.trim()) return;
+    try {
+      const res = await api.put(`/api/messages/${editingMessage.id}`, { content: editContent.trim() });
+      setMessages(prev => prev.map(m => m.id === editingMessage.id ? res.data.message : m));
+      setShowEditModal(false);
+      setEditingMessage(null);
+    } catch (error) {
+      console.error('Failed to edit message', error);
+    }
+  };
+
+  const deleteMessage = async (msg: Message) => {
+    try {
+      await api.delete(`/api/messages/${msg.id}`);
+      setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, content: '此消息已被删除', is_deleted: true } : m));
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          type: 'delete',
+          message_id: msg.id,
+          chat_id: msg.chat_id,
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to delete message', error);
+    }
+    setContextMenu(null);
+  };
+
+  const viewHistory = (msg: Message) => {
+    setHistoryMessage(msg);
+    setShowHistoryModal(true);
+    setContextMenu(null);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, msg: Message) => {
+    e.preventDefault();
+    if (msg.sender_id === user?.id) {
+      setContextMenu({ msg, x: e.clientX, y: e.clientY });
+    }
+  };
+
+  useEffect(() => {
+    const handleClick = () => setContextMenu(null);
+    window.addEventListener('click', handleClick);
+    return () => window.removeEventListener('click', handleClick);
+  }, []);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
@@ -253,6 +362,7 @@ export default function ChatRoom() {
           </div>
           <div className="text-sm text-slate-400">
             欢迎, <span className="text-blue-400">{user?.username}</span>
+            <span className={`ml-2 inline-block w-2 h-2 rounded-full ${onlineUsers.has(user?.id || '') ? 'bg-green-500' : 'bg-gray-500'}`}></span>
           </div>
         </div>
 
@@ -267,8 +377,15 @@ export default function ChatRoom() {
             >
               <span className="text-2xl">{getChatIcon(chat)}</span>
               <div className="flex-1 min-w-0">
-                <div className="text-white font-medium truncate">
-                  {getChatDisplayName(chat, user?.id || '')}
+                <div className="flex items-center justify-between">
+                  <div className="text-white font-medium truncate">
+                    {getChatDisplayName(chat, user?.id || '')}
+                  </div>
+                  {unreadCounts[chat.id] ? (
+                    <span className="ml-2 px-1.5 py-0.5 text-xs bg-red-500 text-white rounded-full">
+                      {unreadCounts[chat.id]}
+                    </span>
+                  ) : null}
                 </div>
                 <div className="text-sm text-slate-400">
                   {chat.type === 'group' && `${chat.member_count || 0} 成员`}
@@ -298,14 +415,32 @@ export default function ChatRoom() {
                     </p>
                   </div>
                 </div>
-                {activeChat.type === 'group' && activeChat.created_by === user?.id && (
-                  <button
-                    onClick={() => setShowDissolveConfirm(true)}
-                    className="px-3 py-1 text-sm text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded-lg transition-colors"
-                  >
-                    解散群聊
-                  </button>
-                )}
+                <div className="flex gap-2">
+                  {activeChat.type === 'group' && (
+                    <button
+                      onClick={() => setShowMembersPanel(true)}
+                      className="px-3 py-1 text-sm text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+                    >
+                      成员
+                    </button>
+                  )}
+                  {activeChat.type === 'group' && activeChat.created_by === user?.id && (
+                    <button
+                      onClick={() => setShowDissolveConfirm(true)}
+                      className="px-3 py-1 text-sm text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded-lg transition-colors"
+                    >
+                      解散群聊
+                    </button>
+                  )}
+                  {activeChat.type === 'group' && activeChat.created_by !== user?.id && (
+                    <button
+                      onClick={() => setShowLeaveConfirm(true)}
+                      className="px-3 py-1 text-sm text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+                    >
+                      退出群聊
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -314,7 +449,11 @@ export default function ChatRoom() {
                 const isOwn = msg.sender_id === user?.id;
                 
                 return (
-                  <div key={msg.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
+                  <div
+                    key={msg.id}
+                    className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}
+                    onContextMenu={(e) => handleContextMenu(e, msg)}
+                  >
                     <div className={`max-w-[70%] ${isOwn ? 'order-2' : 'order-1'}`}>
                       <div className={`text-xs text-slate-400 mb-1 ${isOwn ? 'text-right' : 'text-left'}`}>
                         {msg.sender_username || '未知用户'}
@@ -323,8 +462,11 @@ export default function ChatRoom() {
                         isOwn 
                           ? 'bg-blue-600 text-white rounded-br-md' 
                           : 'bg-slate-700 text-white rounded-bl-md'
-                      }`}>
+                      } ${msg.is_deleted ? 'opacity-50 italic' : ''}`}>
                         <p className="break-words">{msg.content}</p>
+                        {msg.edited_at && (
+                          <span className="text-xs opacity-60 ml-1">(已编辑)</span>
+                        )}
                       </div>
                       <div className={`text-xs text-slate-500 mt-1 ${isOwn ? 'text-right' : 'text-left'}`}>
                         {formatTime(msg.created_at)}
@@ -367,6 +509,104 @@ export default function ChatRoom() {
         )}
       </div>
 
+      {contextMenu && (
+        <div
+          className="fixed bg-slate-700 rounded-lg shadow-xl py-1 z-50 min-w-[120px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button
+            onClick={() => openEditModal(contextMenu.msg)}
+            className="w-full px-4 py-2 text-left text-sm text-white hover:bg-slate-600"
+          >
+            ✏️ 编辑
+          </button>
+          {contextMenu.msg.original_content && (
+            <button
+              onClick={() => viewHistory(contextMenu.msg)}
+              className="w-full px-4 py-2 text-left text-sm text-white hover:bg-slate-600"
+            >
+              📜 查看历史
+            </button>
+          )}
+          <button
+            onClick={() => deleteMessage(contextMenu.msg)}
+            className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-slate-600"
+          >
+            🗑️ 删除
+          </button>
+        </div>
+      )}
+
+      {showEditModal && editingMessage && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowEditModal(false)}>
+          <div className="bg-slate-800 rounded-2xl shadow-xl w-full max-w-md mx-4 p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-white mb-4">编辑消息</h3>
+            <div className="mb-4 p-3 bg-slate-700 rounded-lg">
+              <p className="text-xs text-slate-400 mb-1">原消息</p>
+              <p className="text-white">{editingMessage.original_content || editingMessage.content}</p>
+            </div>
+            <textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4 resize-none"
+              rows={3}
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={saveEdit}
+                className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showHistoryModal && historyMessage && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowHistoryModal(false)}>
+          <div className="bg-slate-800 rounded-2xl shadow-xl w-full max-w-md mx-4 p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-white mb-4">📜 消息历史</h3>
+            <div className="space-y-3">
+              <div className="p-3 bg-slate-700 rounded-lg border-l-4 border-green-500">
+                <p className="text-xs text-green-400 mb-1">原始消息</p>
+                <p className="text-white">{historyMessage.original_content || historyMessage.content}</p>
+              </div>
+              <div className="p-3 bg-slate-700 rounded-lg border-l-4 border-blue-500">
+                <p className="text-xs text-blue-400 mb-1">当前消息</p>
+                <p className="text-white">{historyMessage.content}</p>
+              </div>
+              {historyMessage.edited_at && (
+                <p className="text-xs text-slate-500">编辑时间: {formatTime(historyMessage.edited_at)}</p>
+              )}
+            </div>
+            <button
+              onClick={() => setShowHistoryModal(false)}
+              className="mt-4 w-full py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+            >
+              关闭
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showMembersPanel && activeChat && (
+        <MembersPanel
+          chat={activeChat}
+          onClose={() => setShowMembersPanel(false)}
+          onMembersChange={() => {
+            api.get('/api/chats').then(res => setChats(res.data.chats || []));
+          }}
+        />
+      )}
+
       {showFriends && (
         <FriendsPanel
           friends={friends}
@@ -375,7 +615,6 @@ export default function ChatRoom() {
             api.get('/api/friends').then(res => setFriends(res.data.friends || []));
             api.get('/api/chats').then(res => setChats(res.data.chats || []));
           }}
-
         />
       )}
 
@@ -412,6 +651,162 @@ export default function ChatRoom() {
           </div>
         </div>
       )}
+
+      {showLeaveConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowLeaveConfirm(false)}>
+          <div 
+            className="bg-slate-800 rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-white mb-2">确认退出群聊</h3>
+            <p className="text-slate-400 mb-6">退出后将无法再接收该群聊的消息。</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowLeaveConfirm(false)}
+                className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={leaveGroup}
+                className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+              >
+                确认退出
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MembersPanel({ chat, onClose, onMembersChange }: { chat: Chat; onClose: () => void; onMembersChange: () => void }) {
+  const { user } = useAuth();
+  const [members, setMembers] = useState<any[]>([]);
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [friends, setFriends] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchMembers = async () => {
+      try {
+        const [membersRes, friendsRes] = await Promise.all([
+          api.get(`/api/chats/${chat.id}/members`),
+          api.get('/api/friends'),
+        ]);
+        setMembers(membersRes.data.members || []);
+        setFriends(friendsRes.data.friends || []);
+      } catch (error) {
+        console.error('Failed to fetch members', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchMembers();
+  }, [chat.id]);
+
+  const addMember = async (friendId: string) => {
+    try {
+      await api.post(`/api/chats/${chat.id}/members`, { userId: friendId });
+      const res = await api.get(`/api/chats/${chat.id}/members`);
+      setMembers(res.data.members || []);
+      onMembersChange();
+      setShowAddMember(false);
+    } catch (error: any) {
+      alert(error.response?.data?.error || '添加失败');
+    }
+  };
+
+  const removeMember = async (memberId: string) => {
+    if (!confirm('确定要移除该成员吗？')) return;
+    try {
+      await api.delete(`/api/chats/${chat.id}/members/${memberId}`);
+      const res = await api.get(`/api/chats/${chat.id}/members`);
+      setMembers(res.data.members || []);
+      onMembersChange();
+    } catch (error: any) {
+      alert(error.response?.data?.error || '移除失败');
+    }
+  };
+
+  const isOwner = chat.created_by === user?.id;
+  const isAdmin = members.find(m => m.id === user?.id)?.role === 'admin';
+  const canManage = isOwner || isAdmin;
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-slate-800 rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
+          <p className="text-white text-center">加载中...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-slate-800 rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-white">群成员 ({members.length})</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-white text-xl">&times;</button>
+        </div>
+
+        {canManage && (
+          <button
+            onClick={() => setShowAddMember(!showAddMember)}
+            className="mb-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
+          >
+            + 添加成员
+          </button>
+        )}
+
+        {showAddMember && (
+          <div className="mb-4 p-3 bg-slate-700 rounded-lg max-h-40 overflow-y-auto">
+            {friends
+              .filter(f => !members.some(m => m.id === f.id))
+              .map(friend => (
+                <button
+                  key={friend.id}
+                  onClick={() => addMember(friend.id)}
+                  className="w-full text-left px-3 py-2 text-white hover:bg-slate-600 rounded transition-colors text-sm"
+                >
+                  {friend.username}
+                </button>
+              ))}
+            {friends.filter(f => !members.some(m => m.id === f.id)).length === 0 && (
+              <p className="text-slate-400 text-sm text-center py-2">没有可添加的好友</p>
+            )}
+          </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto space-y-2">
+          {members.map(member => (
+            <div key={member.id} className="flex items-center justify-between p-3 bg-slate-700 rounded-lg">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm font-bold">
+                  {member.username?.[0]?.toUpperCase()}
+                </div>
+                <div>
+                  <p className="text-white text-sm font-medium">{member.username}</p>
+                  <p className="text-xs text-slate-400">
+                    {member.role === 'owner' ? '群主' : member.role === 'admin' ? '管理员' : '成员'}
+                    <span className={`ml-2 inline-block w-2 h-2 rounded-full ${member.status === 'online' ? 'bg-green-500' : 'bg-gray-500'}`}></span>
+                  </p>
+                </div>
+              </div>
+              {canManage && member.role !== 'owner' && member.id !== user?.id && (
+                <button
+                  onClick={() => removeMember(member.id)}
+                  className="text-red-400 hover:text-red-300 text-sm"
+                >
+                  移除
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

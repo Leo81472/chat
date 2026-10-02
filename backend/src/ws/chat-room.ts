@@ -2,7 +2,7 @@ import type { Env } from '../types';
 
 export class ChatRoom implements DurableObject {
   private storage: DurableObjectStorage;
-  private sessions: Map<string, { ws: WebSocket; chatIds: Set<string> }>;
+  private sessions: Map<string, { ws: WebSocket; chatIds: Set<string>; userId: string }>;
   private env: Env;
 
   constructor(state: DurableObjectState, env: Env) {
@@ -32,10 +32,27 @@ export class ChatRoom implements DurableObject {
     });
   }
 
+  private async broadcastStatus(userId: string, status: 'online' | 'offline') {
+    const statusMsg = JSON.stringify({
+      type: 'status',
+      user_id: userId,
+      status,
+      timestamp: new Date().toISOString(),
+    });
+
+    this.sessions.forEach((session) => {
+      if (session.ws.readyState === WebSocket.OPEN) {
+        session.ws.send(statusMsg);
+      }
+    });
+  }
+
   private handleWebSocket(ws: WebSocket, userId: string) {
     ws.accept();
 
-    this.sessions.set(userId, { ws, chatIds: new Set() });
+    this.sessions.set(userId, { ws, chatIds: new Set(), userId });
+
+    this.broadcastStatus(userId, 'online');
 
     ws.addEventListener('message', async (event) => {
       try {
@@ -65,9 +82,63 @@ export class ChatRoom implements DurableObject {
             if (session.ws.readyState === WebSocket.OPEN) {
               if (chatId && session.chatIds.has(chatId)) {
                 session.ws.send(JSON.stringify(broadcastMsg));
+              } else if (sessionId !== data.user_id) {
+                session.ws.send(JSON.stringify({
+                  type: 'unread',
+                  chat_id: chatId,
+                }));
               }
             }
           });
+        } else if (data.type === 'edit') {
+          const messageId = data.message_id;
+          const message = await this.env.DB.prepare("SELECT * FROM messages WHERE id = ?").bind(messageId).first<any>();
+          
+          if (message && message.sender_id === data.user_id) {
+            const originalContent = message.original_content || message.content;
+            
+            await this.env.DB.prepare(
+              "UPDATE messages SET content = ?, original_content = ?, edited_at = datetime('now') WHERE id = ?"
+            ).bind(data.content, originalContent, messageId).run();
+            
+            const updated = await this.env.DB.prepare(
+              "SELECT m.id, m.chat_id, m.chat_type, m.sender_id, m.content, m.original_content, m.edited_at, m.created_at, u.username as sender_username FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.id = ?"
+            ).bind(messageId).first();
+            
+            const broadcastMsg = {
+              type: 'edit',
+              ...updated,
+              timestamp: new Date().toISOString(),
+            };
+            
+            this.sessions.forEach((session) => {
+              if (session.ws.readyState === WebSocket.OPEN && session.chatIds.has(data.chat_id)) {
+                session.ws.send(JSON.stringify(broadcastMsg));
+              }
+            });
+          }
+        } else if (data.type === 'delete') {
+          const messageId = data.message_id;
+          const message = await this.env.DB.prepare("SELECT * FROM messages WHERE id = ?").bind(messageId).first<any>();
+          
+          if (message && message.sender_id === data.user_id) {
+            await this.env.DB.prepare(
+              "UPDATE messages SET is_deleted = 1, content = '此消息已被删除' WHERE id = ?"
+            ).bind(messageId).run();
+            
+            const broadcastMsg = {
+              type: 'delete',
+              message_id: messageId,
+              chat_id: data.chat_id,
+              timestamp: new Date().toISOString(),
+            };
+            
+            this.sessions.forEach((session) => {
+              if (session.ws.readyState === WebSocket.OPEN && session.chatIds.has(data.chat_id)) {
+                session.ws.send(JSON.stringify(broadcastMsg));
+              }
+            });
+          }
         } else if (data.type === 'join') {
           const session = this.sessions.get(userId);
           if (session && data.chat_id) {
@@ -86,12 +157,18 @@ export class ChatRoom implements DurableObject {
       }
     });
 
-    ws.addEventListener('close', () => {
+    ws.addEventListener('close', async () => {
       this.sessions.delete(userId);
+      await this.broadcastStatus(userId, 'offline');
+      
+      await this.env.DB.prepare(
+        "UPDATE users SET status = 'offline', last_seen = datetime('now') WHERE id = ?"
+      ).bind(userId).run();
     });
 
-    ws.addEventListener('error', () => {
+    ws.addEventListener('error', async () => {
       this.sessions.delete(userId);
+      await this.broadcastStatus(userId, 'offline');
     });
   }
 }

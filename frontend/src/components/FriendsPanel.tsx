@@ -80,9 +80,22 @@ export default function FriendsPanel({ friends, onClose, onFriendAdded }: Friend
             <h4 className="text-sm font-medium text-slate-400 mb-2">搜索结果</h4>
             {searchResults.map((user) => (
               <div key={user.id} className="flex items-center justify-between py-2">
-                <div>
-                  <span className="text-white">{user.username}</span>
-                  <span className="text-xs text-slate-500 ml-2">ID: {user.id}</span>
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                      {user.username[0].toUpperCase()}
+                    </div>
+                    <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-slate-800 ${
+                      user.status === 'online' ? 'bg-green-500' : 'bg-gray-500'
+                    }`}></span>
+                  </div>
+                  <div>
+                    <span className="text-white">{user.username}</span>
+                    <span className="text-xs text-slate-500 ml-2">ID: {user.id}</span>
+                    <span className={`text-xs ml-2 ${user.status === 'online' ? 'text-green-400' : 'text-slate-500'}`}>
+                      {user.status === 'online' ? '在线' : '离线'}
+                    </span>
+                  </div>
                 </div>
                 <button
                   onClick={() => handleAddFriend(user.id)}
@@ -105,12 +118,19 @@ export default function FriendsPanel({ friends, onClose, onFriendAdded }: Friend
                 key={friend.id}
                 className="flex items-center gap-3 py-3 border-b border-slate-700/50 last:border-0 px-2"
               >
-                <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-medium">
-                  {friend.username[0].toUpperCase()}
+                <div className="relative">
+                  <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-medium">
+                    {friend.username[0].toUpperCase()}
+                  </div>
+                  <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-slate-800 ${
+                    friend.status === 'online' ? 'bg-green-500' : 'bg-gray-500'
+                  }`}></span>
                 </div>
                 <div className="flex-1">
                   <div className="text-white">{friend.username}</div>
-                  <div className="text-xs text-slate-500">ID: {friend.id}</div>
+                  <div className="text-xs text-slate-500">
+                    {friend.status === 'online' ? '在线' : '离线'}
+                  </div>
                 </div>
               </div>
             ))

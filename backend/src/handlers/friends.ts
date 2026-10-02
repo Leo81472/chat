@@ -21,7 +21,7 @@ app.get('/api/friends', async (c) => {
   const userId = c.get('userId');
   
   const friends = await c.env.DB.prepare(
-    `SELECT u.id, u.username, f.created_at 
+    `SELECT u.id, u.username, u.status, f.created_at 
      FROM friendships f 
      JOIN users u ON f.friend_id = u.id 
      WHERE f.user_id = ?
@@ -75,11 +75,11 @@ app.post('/api/friends', zValidator('json', addFriendSchema), async (c) => {
     ).bind(chatId, userId).run();
     
     await c.env.DB.prepare(
-      "INSERT INTO chat_members (chat_id, user_id) VALUES (?, ?)"
+      "INSERT INTO chat_members (chat_id, user_id, role) VALUES (?, ?, 'owner')"
     ).bind(chatId, userId).run();
     
     await c.env.DB.prepare(
-      "INSERT INTO chat_members (chat_id, user_id) VALUES (?, ?)"
+      "INSERT INTO chat_members (chat_id, user_id, role) VALUES (?, ?, 'member')"
     ).bind(chatId, friendId).run();
   }
   
@@ -105,7 +105,7 @@ app.get('/api/users/search', async (c) => {
   }
   
   const users = await c.env.DB.prepare(
-    "SELECT id, username FROM users WHERE username LIKE ? LIMIT 10"
+    "SELECT id, username, status FROM users WHERE username LIKE ? LIMIT 10"
   ).bind(`%${query}%`).all();
   
   return c.json({ users: users.results });

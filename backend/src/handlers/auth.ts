@@ -28,7 +28,7 @@ app.post('/api/auth/register', zValidator('json', registerSchema), async (c) => 
   const password_hash = await hashPassword(password);
   
   await c.env.DB.prepare(
-    "INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)"
+    "INSERT INTO users (id, username, password_hash, status) VALUES (?, ?, ?, 'online')"
   ).bind(id, username, password_hash).run();
   
   await c.env.DB.prepare(
@@ -58,6 +58,10 @@ app.post('/api/auth/login', zValidator('json', loginSchema), async (c) => {
   if (!user || !(await verifyPassword(password, user.password_hash))) {
     return c.json({ error: '用户名或密码错误' }, 401);
   }
+  
+  await c.env.DB.prepare(
+    "UPDATE users SET status = 'online', last_seen = datetime('now') WHERE id = ?"
+  ).bind(user.id).run();
   
   const token = generateToken({ id: user.id, username: user.username }, c.env.JWT_SECRET);
   

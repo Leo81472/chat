@@ -3,6 +3,9 @@ CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
+  avatar TEXT,
+  status TEXT DEFAULT 'offline',
+  last_seen TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -10,6 +13,7 @@ CREATE TABLE IF NOT EXISTS chats (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL CHECK(type IN ('public', 'private', 'group')),
   name TEXT,
+  avatar TEXT,
   created_by TEXT NOT NULL,
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (created_by) REFERENCES users(id)
@@ -18,6 +22,7 @@ CREATE TABLE IF NOT EXISTS chats (
 CREATE TABLE IF NOT EXISTS chat_members (
   chat_id TEXT NOT NULL,
   user_id TEXT NOT NULL,
+  role TEXT DEFAULT 'member' CHECK(role IN ('owner', 'admin', 'member')),
   joined_at TEXT DEFAULT (datetime('now')),
   PRIMARY KEY (chat_id, user_id),
   FOREIGN KEY (chat_id) REFERENCES chats(id),
@@ -30,6 +35,9 @@ CREATE TABLE IF NOT EXISTS messages (
   chat_type TEXT NOT NULL CHECK(chat_type IN ('public', 'private', 'group')),
   sender_id TEXT NOT NULL,
   content TEXT NOT NULL,
+  original_content TEXT,
+  edited_at TEXT,
+  is_deleted INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (chat_id) REFERENCES chats(id),
   FOREIGN KEY (sender_id) REFERENCES users(id)
@@ -42,6 +50,15 @@ CREATE TABLE IF NOT EXISTS friendships (
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id),
   FOREIGN KEY (friend_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS unread_counts (
+  user_id TEXT NOT NULL,
+  chat_id TEXT NOT NULL,
+  count INTEGER DEFAULT 0,
+  PRIMARY KEY (user_id, chat_id),
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  FOREIGN KEY (chat_id) REFERENCES chats(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_chat ON messages(chat_id);

@@ -1,0 +1,141 @@
+# QuickChat 更新日志
+
+## v0.1.0 (2026-10-01) - 正式版
+
+### 新功能
+- 私聊功能：好友之间可以直接私聊，添加好友时自动创建私聊
+- 群聊功能：用户可以创建群聊并邀请好友
+- 群聊解散功能：群主可以解散自己创建的群聊
+- 好友系统：用户可以通过 ID 搜索并添加好友
+- WebSocket 实时消息推送：消息自动接收，无需手动刷新
+- 乐观更新：发送消息后立即显示，无需等待服务器响应
+- 公共聊天：所有注册用户自动加入公共聊天室
+
+### 修复
+- 修复路由前缀重复：解决 `/api/auth/register` 返回 404 错误
+- 修复数据库表缺失：添加完整的数据库初始化 SQL
+- 修复外键约束错误：创建 system 用户作为公共聊天的创建者
+- 修复 Durable Object 类型定义：添加 `DB: D1Database` 绑定
+- 修复 WebSocket 连接失败：添加 `/ws` 路由转发到 Durable Object
+- 修复消息不保存到数据库：Durable Object 收到消息后先保存到 D1 数据库再广播
+- 修复消息重复显示：实现乐观更新机制，通过 `tempId` 替换临时消息
+- 修复发送者收不到自己消息：移除 Durable Object 中 `sessionId !== userId` 过滤
+- 修复公共聊天不显示：新用户注册时自动加入公共聊天
+- 修复好友面板误触：移除"开始私聊"按钮，防止重复创建私聊
+- 修复消息字段名不匹配：后端返回 `sender_username` 与前端类型定义一致
+- 修复 Hono 类型定义：添加 `Variables` 类型支持 `c.get('userId')`
+- 修复消息发送者显示：每条消息都显示发送者用户名
+- 修复构建错误：移除未使用的 `startPrivateChat` 函数
+
+---
+
+## Beta v0.1.0.4 (2026-10-01)
+
+### 修复
+- 修复消息字段名不匹配：后端返回 `sender_username` 与前端 `Message` 类型定义一致，解决刷新后显示"未知用户"问题
+- 修复 Hono 类型定义：在 `chat.ts` 中添加 `Variables` 类型，解决 `c.get('userId')` 类型错误
+- 修复消息发送者显示：每条消息都显示发送者用户名，移除 `showAvatar` 逻辑
+- 修复构建错误：移除未使用的 `startPrivateChat` 函数，解决 TypeScript 编译失败
+
+## Beta v0.1.0.3 (2026-10-01)
+
+### 修复
+- 修复公共聊天不显示：新用户注册时自动加入公共聊天（`INSERT INTO chat_members`）
+- 添加批量加入 SQL：让已注册用户也能看到公共聊天
+
+## Beta v0.1.0.2 (2026-10-01)
+
+### 修复
+- 修复消息重复显示：实现乐观更新机制，发送消息时先显示临时消息，WebSocket 广播到达后通过 `tempId` 替换为真实消息
+- 修复发送者收不到自己消息：移除 Durable Object 中 `sessionId !== userId` 过滤
+- 修复好友面板误触：移除"开始私聊"按钮，防止重复创建私聊
+
+## Beta v0.1.0.1 (2026-10-01)
+
+### 修复
+- 修复 WebSocket 连接失败：在 `index.ts` 中添加 `/ws` 路由，转发到 Durable Object
+- 修复消息不保存到数据库：Durable Object 收到消息后先保存到 D1 数据库再广播
+- 修复 Durable Object 类型定义：添加 `DB: D1Database` 绑定，解决数据库访问失败
+
+---
+
+## Alpha v0.1.0.0 (2026-10-01)
+
+### 新功能
+- 添加私聊功能：好友之间可以直接私聊，添加好友时自动创建私聊
+- 添加群聊功能：用户可以创建群聊并邀请好友
+- 添加群聊解散功能：群主可以解散自己创建的群聊（`DELETE /api/chats/:chatId`）
+- 添加好友系统：用户可以通过 ID 搜索并添加好友
+- 实现 WebSocket 实时消息推送：消息自动接收，无需手动刷新
+- 实现乐观更新：发送消息后立即显示，无需等待服务器响应
+
+### 已知问题
+- 路由前缀重复导致 404 错误
+- 数据库表未初始化
+- 外键约束错误
+- WebSocket 连接失败
+- 消息不保存到数据库
+- 消息重复显示
+- 公共聊天不显示
+- 好友面板误触创建重复私聊
+- 消息字段名不匹配
+- Hono 类型定义缺失
+- 消息发送者不显示
+- 构建错误
+
+---
+
+## v0.0.1 (2026-10-01) - 正式版
+
+### 功能
+- 基础聊天功能：公共聊天室
+- 用户注册和登录
+- JWT 身份验证
+- 前后端分离架构
+- 部署到 Cloudflare Workers 和 Pages
+- 配置自定义域名 `quickchat-api.cc.cd`
+- 配置 D1 数据库 `chat-db`
+- 配置 Durable Objects `ChatRoom`
+- 配置环境变量 `JWT_SECRET`
+
+---
+
+## Beta v0.0.1.4 (2026-10-01)
+
+### 修复
+- 修复外键约束错误：在 D1 中创建 system 用户，解决 `INSERT INTO chats` 时 `created_by` 外键引用失败
+
+## Beta v0.0.1.3 (2026-10-01)
+
+### 修复
+- 修复数据库表缺失：在 D1 Studio 中逐条执行建表 SQL，创建 users、chats、chat_members、messages、friendships 表及索引
+
+## Beta v0.0.1.2 (2026-10-01)
+
+### 修复
+- 修复路由前缀重复：`index.ts` 中 `app.route('/api', authHandler)` 改为 `app.route('/', authHandler)`，解决 `/api/auth/register` 返回 404 错误
+
+## Beta v0.0.1.1 (2026-10-01)
+
+### 修复
+- 修复自定义域名配置：将前端 API 地址从 `.workers.dev` 改为 `quickchat-api.cc.cd`，解决 DNS 污染导致的连接超时问题
+
+---
+
+## Alpha v0.0.1.0 (2026-10-01)
+
+### 功能
+- 基础聊天功能：公共聊天室
+- 用户注册和登录
+- JWT 身份验证
+- 前后端分离架构
+- 部署到 Cloudflare Workers 和 Pages
+- 配置自定义域名 `quickchat-api.cc.cd`
+- 配置 D1 数据库 `chat-db`
+- 配置 Durable Objects `ChatRoom`
+- 配置环境变量 `JWT_SECRET`
+
+### 已知问题
+- 路由前缀重复导致 404 错误
+- 数据库表未初始化
+- 外键约束错误
