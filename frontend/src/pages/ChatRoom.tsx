@@ -65,10 +65,6 @@ export default function ChatRoom() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
   const connectWebSocket = useCallback(() => {
     if (!user || !token) return;
 
@@ -361,6 +357,7 @@ export default function ChatRoom() {
     };
 
     setMessages(prev => [...prev, tempMsg]);
+    scrollToBottom();
 
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
