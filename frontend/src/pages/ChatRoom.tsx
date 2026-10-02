@@ -28,12 +28,38 @@ export default function ChatRoom() {
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
+  const [isMobile, setIsMobile] = useState(false);
+  const [showMobileChatList, setShowMobileChatList] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const activeChatRef = useRef<Chat | null>(null);
 
   activeChatRef.current = activeChat;
+
+  // 检测设备类型
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // 移动端选择聊天后自动隐藏列表
+  const handleSelectChat = (chat: Chat) => {
+    setActiveChat(chat);
+    if (isMobile) {
+      setShowMobileChatList(false);
+    }
+  };
+
+  // 移动端返回聊天列表
+  const handleBackToList = () => {
+    setShowMobileChatList(true);
+    setActiveChat(null);
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -481,7 +507,12 @@ export default function ChatRoom() {
 
   return (
     <div className="h-screen flex bg-slate-900">
-      <div className="w-80 bg-slate-800 border-r border-slate-700 flex flex-col">
+      {/* 聊天列表侧边栏 - 桌面端固定显示，移动端根据状态显示 */}
+      <div className={`${
+        isMobile 
+          ? (showMobileChatList ? 'w-full' : 'hidden') 
+          : 'w-80'
+      } bg-slate-800 border-r border-slate-700 flex flex-col ${isMobile ? '' : 'flex-shrink-0'}`}>
         <div className="p-4 border-b border-slate-700">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-white">聊天</h2>
@@ -521,7 +552,6 @@ export default function ChatRoom() {
                     const permission = await Notification.requestPermission();
                     setNotificationPermission(permission);
                     if (permission === 'granted') {
-                      // 发送测试通知
                       new Notification('通知已启用！', {
                         body: '您现在可以接收消息通知了',
                         icon: '/vite.svg',
@@ -557,7 +587,7 @@ export default function ChatRoom() {
           {chats.map(chat => (
             <button
               key={chat.id}
-              onClick={() => setActiveChat(chat)}
+              onClick={() => handleSelectChat(chat)}
               className={`w-full p-4 flex items-center gap-3 hover:bg-slate-700/50 transition-colors text-left ${
                 activeChat?.id === chat.id ? 'bg-slate-700/50' : ''
               }`}
@@ -585,12 +615,26 @@ export default function ChatRoom() {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col">
+      {/* 聊天主区域 */}
+      <div className={`${
+        isMobile 
+          ? (showMobileChatList ? 'hidden' : 'w-full') 
+          : 'flex-1'
+      } flex flex-col`}>
         {activeChat ? (
           <>
+            {/* 聊天头部 - 移动端显示返回按钮 */}
             <div className="p-4 border-b border-slate-700 bg-slate-800">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
+                  {isMobile && (
+                    <button
+                      onClick={handleBackToList}
+                      className="p-1 text-slate-400 hover:text-white mr-1"
+                    >
+                      ←
+                    </button>
+                  )}
                   <span className="text-2xl">{getChatIcon(activeChat)}</span>
                   <div>
                     <h3 className="text-white font-medium">
@@ -631,6 +675,7 @@ export default function ChatRoom() {
               </div>
             </div>
 
+            {/* 消息区域 */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {messages.map((msg) => {
                 const isOwn = msg.sender_id === user?.id;
@@ -641,7 +686,7 @@ export default function ChatRoom() {
                     className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}
                     onContextMenu={(e) => handleContextMenu(e, msg)}
                   >
-                    <div className={`max-w-[70%] ${isOwn ? 'order-2' : 'order-1'}`}>
+                    <div className={`max-w-[70%] ${isMobile ? 'max-w-[85%]' : ''} ${isOwn ? 'order-2' : 'order-1'}`}>
                       <div className={`text-xs text-slate-400 mb-1 ${isOwn ? 'text-right' : 'text-left'}`}>
                         {msg.sender_username || '未知用户'}
                       </div>
@@ -665,6 +710,7 @@ export default function ChatRoom() {
               <div ref={messagesEndRef} />
             </div>
 
+            {/* 输入区域 */}
             <div className="p-4 border-t border-slate-700 bg-slate-800">
               <div className="flex gap-3">
                 <input
