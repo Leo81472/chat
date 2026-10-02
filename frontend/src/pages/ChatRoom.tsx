@@ -105,6 +105,11 @@ export default function ChatRoom() {
             }
             return next;
           });
+          
+          // 同时更新好友列表中的状态
+          setFriends(prev => prev.map(f => 
+            f.id === data.user_id ? { ...f, status: data.status as 'online' | 'offline' } : f
+          ));
         } else if (data.type === 'unread') {
           setUnreadCounts(prev => ({
             ...prev,
@@ -158,6 +163,30 @@ export default function ChatRoom() {
         setNotificationPermission(permission);
       });
     }
+    
+    // 重新获取好友列表以获取最新在线状态
+    const refreshFriendsStatus = async () => {
+      try {
+        const friendsRes = await api.get('/api/friends');
+        const friendsData = friendsRes.data.friends || [];
+        setFriends(friendsData);
+        
+        // 更新在线用户列表
+        const onlineUserIds = new Set<string>();
+        friendsData.forEach((f: Friend) => {
+          if (f.status === 'online') {
+            onlineUserIds.add(f.id);
+          }
+        });
+        setOnlineUsers(onlineUserIds);
+      } catch (error) {
+        console.error('Failed to refresh friends status', error);
+      }
+    };
+    
+    // 在WebSocket连接后延迟刷新，确保后端已更新状态
+    const timer = setTimeout(refreshFriendsStatus, 1000);
+    return () => clearTimeout(timer);
   }, []);
 
   const sendNotification = (title: string, body: string) => {
@@ -178,7 +207,18 @@ export default function ChatRoom() {
           api.get('/api/unread'),
         ]);
         setChats(chatsRes.data.chats || []);
-        setFriends(friendsRes.data.friends || []);
+        const friendsData = friendsRes.data.friends || [];
+        setFriends(friendsData);
+        
+        // 初始化在线用户列表
+        const onlineUserIds = new Set<string>();
+        friendsData.forEach((f: Friend) => {
+          if (f.status === 'online') {
+            onlineUserIds.add(f.id);
+          }
+        });
+        setOnlineUsers(onlineUserIds);
+        
         const unreadMap: Record<string, number> = {};
         (unreadRes.data.unread || []).forEach((u: any) => {
           unreadMap[u.chat_id] = u.count;
@@ -274,6 +314,10 @@ export default function ChatRoom() {
       setChats(prev => prev.filter(c => c.id !== activeChat.id));
       setActiveChat(null);
       setShowDissolveConfirm(false);
+      
+      // 重新获取聊天列表以确保状态同步
+      const chatsRes = await api.get('/api/chats');
+      setChats(chatsRes.data.chats || []);
     } catch (error) {
       console.error('Failed to dissolve group', error);
     }
@@ -286,6 +330,10 @@ export default function ChatRoom() {
       setChats(prev => prev.filter(c => c.id !== activeChat.id));
       setActiveChat(null);
       setShowLeaveConfirm(false);
+      
+      // 重新获取聊天列表以确保状态同步
+      const chatsRes = await api.get('/api/chats');
+      setChats(chatsRes.data.chats || []);
     } catch (error) {
       console.error('Failed to leave group', error);
     }
@@ -374,6 +422,24 @@ export default function ChatRoom() {
                 title="创建群聊"
               >
                 👥
+              </button>
+              <button
+                onClick={() => {
+                  if ('Notification' in window) {
+                    Notification.requestPermission().then(permission => {
+                      setNotificationPermission(permission);
+                      if (permission === 'granted') {
+                        alert('通知已启用！');
+                      }
+                    });
+                  }
+                }}
+                className={`p-2 hover:bg-slate-700 rounded-lg transition-colors ${
+                  notificationPermission === 'granted' ? 'text-green-400' : 'text-slate-400 hover:text-white'
+                }`}
+                title={notificationPermission === 'granted' ? '通知已启用' : '启用通知'}
+              >
+                🔔
               </button>
               <button
                 onClick={logout}
