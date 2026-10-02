@@ -207,6 +207,65 @@ export default function ChatRoom() {
     }
   };
 
+  // 后台轮询机制：当页面在后台时，定期检查新消息
+  useEffect(() => {
+    let pollingInterval: NodeJS.Timeout | null = null;
+    let lastUnreadCount = 0;
+
+    const checkForNewMessages = async () => {
+      try {
+        const unreadRes = await api.get('/api/unread');
+        const unreadList = unreadRes.data.unread || [];
+        const totalCount = unreadList.reduce((sum: number, u: any) => sum + u.count, 0);
+        
+        // 如果未读消息数量增加，说明有新消息
+        if (totalCount > lastUnreadCount && lastUnreadCount > 0) {
+          // 获取最新的未读消息详情
+          for (const unread of unreadList) {
+            if (unread.count > 0) {
+              const chat = chats.find(c => c.id === unread.chat_id);
+              if (chat) {
+                sendNotification(
+                  `新消息 - ${getChatDisplayName(chat, user?.id || '')}`,
+                  `您有 ${unread.count} 条未读消息`
+                );
+                break; // 只发送一个通知避免刷屏
+              }
+            }
+          }
+        }
+        
+        lastUnreadCount = totalCount;
+      } catch (error) {
+        console.error('Failed to check for new messages', error);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        // 页面进入后台，启动轮询（每10秒检查一次）
+        pollingInterval = setInterval(checkForNewMessages, 10000);
+      } else {
+        // 页面回到前台，停止轮询
+        if (pollingInterval) {
+          clearInterval(pollingInterval);
+          pollingInterval = null;
+        }
+        // 重置未读计数
+        lastUnreadCount = 0;
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+    };
+  }, [chats, user]);
+
   useEffect(() => {
     const fetchChats = async () => {
       try {
