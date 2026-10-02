@@ -407,23 +407,13 @@ export default function ChatRoom() {
     try {
       await api.delete(`/api/chats/${activeChat.id}`);
       
-      // 先本地移除，再重新获取确保同步
+      // 本地移除群聊
       setChats(prev => prev.filter(c => c.id !== activeChat.id));
       setActiveChat(null);
       setShowDissolveConfirm(false);
-      
-      // 延迟一下再获取，确保后端处理完成
-      setTimeout(async () => {
-        try {
-          const chatsRes = await api.get('/api/chats');
-          setChats(chatsRes.data.chats || []);
-        } catch (error) {
-          console.error('Failed to refresh chats after dissolve', error);
-        }
-      }, 500);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to dissolve group', error);
-      alert('解散群聊失败，请重试');
+      alert(error.response?.data?.error || '解散群聊失败，请重试');
     }
   };
 
@@ -450,6 +440,7 @@ export default function ChatRoom() {
     }
     try {
       await api.post('/api/auth/delete', { password: deletePassword });
+      setDeleteError('');
       localStorage.removeItem('token');
       window.location.href = '/login';
     } catch (error: any) {
