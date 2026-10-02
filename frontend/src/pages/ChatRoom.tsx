@@ -30,6 +30,10 @@ export default function ChatRoom() {
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
   const [isMobile, setIsMobile] = useState(false);
   const [showMobileChatList, setShowMobileChatList] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -439,6 +443,20 @@ export default function ChatRoom() {
     }
   };
 
+  const deleteAccount = async () => {
+    if (!deletePassword.trim()) {
+      setDeleteError('请输入密码');
+      return;
+    }
+    try {
+      await api.post('/api/auth/delete', { password: deletePassword });
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    } catch (error: any) {
+      setDeleteError(error.response?.data?.error || '注销失败，请检查密码');
+    }
+  };
+
   const openEditModal = (msg: Message) => {
     setEditingMessage(msg);
     setEditContent(msg.content);
@@ -578,6 +596,17 @@ export default function ChatRoom() {
             欢迎, <span className="text-blue-400">{user?.username}</span>
             <span className={`ml-2 inline-block w-2 h-2 rounded-full ${onlineUsers.has(user?.id || '') ? 'bg-green-500' : 'bg-gray-500'}`}></span>
           </div>
+        </div>
+
+        {/* 设置按钮 - 左下角 */}
+        <div className="p-3 border-t border-slate-700">
+          <button
+            onClick={() => setShowSettings(true)}
+            className="w-full flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+          >
+            <span className="text-lg">⚙️</span>
+            <span className="text-sm">设置</span>
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -902,6 +931,76 @@ export default function ChatRoom() {
                 className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
               >
                 确认退出
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 设置面板 */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowSettings(false)}>
+          <div 
+            className="bg-slate-800 rounded-2xl shadow-xl w-full max-w-sm mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-slate-700 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white">设置</h3>
+              <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-white text-xl">
+                ✕
+              </button>
+            </div>
+            <div className="p-4">
+              <button
+                onClick={() => {
+                  setShowSettings(false);
+                  setShowDeleteConfirm(true);
+                  setDeletePassword('');
+                  setDeleteError('');
+                }}
+                className="w-full py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium"
+              >
+                注销账号
+              </button>
+              <p className="text-xs text-slate-500 mt-2 text-center">注销后所有数据将被永久删除，不可恢复</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 注销账号确认 */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { setShowDeleteConfirm(false); setDeleteError(''); }}>
+          <div 
+            className="bg-slate-800 rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-white mb-2">注销账号</h3>
+            <p className="text-slate-400 mb-4">请输入密码以确认注销账号。此操作不可恢复，所有聊天记录、好友关系将被永久删除。</p>
+            <input
+              type="password"
+              value={deletePassword}
+              onChange={(e) => { setDeletePassword(e.target.value); setDeleteError(''); }}
+              onKeyDown={(e) => e.key === 'Enter' && deleteAccount()}
+              placeholder="输入密码..."
+              className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500 mb-3"
+              autoFocus
+            />
+            {deleteError && (
+              <p className="text-sm text-red-400 mb-3">{deleteError}</p>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowDeleteConfirm(false); setDeleteError(''); }}
+                className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={deleteAccount}
+                className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+              >
+                确认注销
               </button>
             </div>
           </div>
