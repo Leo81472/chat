@@ -460,6 +460,20 @@ export default function ChatRoom() {
     try {
       const res = await api.put(`/api/messages/${editingMessage.id}`, { content: editContent.trim() });
       setMessages(prev => prev.map(m => m.id === editingMessage.id ? res.data.message : m));
+      
+      // 通过 WebSocket 广播编辑事件
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          type: 'edit',
+          message_id: editingMessage.id,
+          chat_id: editingMessage.chat_id,
+          user_id: user?.id,
+          content: res.data.message.content,
+          original_content: res.data.message.original_content,
+          edited_at: res.data.message.edited_at,
+        }));
+      }
+      
       setShowEditModal(false);
       setEditingMessage(null);
     } catch (error) {
@@ -476,6 +490,7 @@ export default function ChatRoom() {
           type: 'delete',
           message_id: msg.id,
           chat_id: msg.chat_id,
+          user_id: user?.id,
         }));
       }
     } catch (error) {
