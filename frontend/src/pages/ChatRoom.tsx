@@ -89,7 +89,13 @@ export default function ChatRoom() {
           
           // 发送桌面通知（如果不是自己发的消息，且当前不在该聊天窗口）
           if (data.user_id !== user?.id && data.chat_id !== activeChatRef.current?.id) {
-            sendNotification(`${data.username}`, data.content);
+            // 检查页面是否可见
+            const isPageVisible = document.visibilityState === 'visible';
+            
+            // 如果页面不可见（在后台），或者用户不在该聊天窗口，则发送通知
+            if (!isPageVisible || data.chat_id !== activeChatRef.current?.id) {
+              sendNotification(`${data.username}`, data.content);
+            }
           }
         } else if (data.type === 'edit') {
           setMessages(prev => prev.map(m => m.id === data.id ? { ...m, content: data.content, original_content: data.original_content, edited_at: data.edited_at } : m));
@@ -171,8 +177,11 @@ export default function ChatRoom() {
         const friendsData = friendsRes.data.friends || [];
         setFriends(friendsData);
         
-        // 更新在线用户列表
+        // 更新在线用户列表（包括自己）
         const onlineUserIds = new Set<string>();
+        if (user?.id) {
+          onlineUserIds.add(user.id); // 自己始终在线
+        }
         friendsData.forEach((f: Friend) => {
           if (f.status === 'online') {
             onlineUserIds.add(f.id);
@@ -311,15 +320,24 @@ export default function ChatRoom() {
     if (!activeChat || activeChat.type !== 'group') return;
     try {
       await api.delete(`/api/chats/${activeChat.id}`);
+      
+      // 先本地移除，再重新获取确保同步
       setChats(prev => prev.filter(c => c.id !== activeChat.id));
       setActiveChat(null);
       setShowDissolveConfirm(false);
       
-      // 重新获取聊天列表以确保状态同步
-      const chatsRes = await api.get('/api/chats');
-      setChats(chatsRes.data.chats || []);
+      // 延迟一下再获取，确保后端处理完成
+      setTimeout(async () => {
+        try {
+          const chatsRes = await api.get('/api/chats');
+          setChats(chatsRes.data.chats || []);
+        } catch (error) {
+          console.error('Failed to refresh chats after dissolve', error);
+        }
+      }, 500);
     } catch (error) {
       console.error('Failed to dissolve group', error);
+      alert('解散群聊失败，请重试');
     }
   };
 
@@ -424,20 +442,40 @@ export default function ChatRoom() {
                 👥
               </button>
               <button
-                onClick={() => {
-                  if ('Notification' in window) {
-                    Notification.requestPermission().then(permission => {
-                      setNotificationPermission(permission);
-                      if (permission === 'granted') {
-                        alert('通知已启用！');
-                      }
-                    });
+                onClick={async () => {
+                  if (!('Notification' in window)) {
+                    alert('您的浏览器不支持通知功能');
+                    return;
+                  }
+                  
+                  if (notificationPermission === 'granted') {
+                    alert('通知已启用！');
+                    return;
+                  }
+                  
+                  if (notificationPermission === 'denied') {
+                    alert('通知已被拒绝，请在浏览器设置中手动开启');
+                    return;
+                  }
+                  
+                  try {
+                    const permission = await Notification.requestPermission();
+                    setNotificationPermission(permission);
+                    if (permission === 'granted') {
+                      // 发送测试通知
+                      new Notification('通知已启用！', {
+                        body: '您现在可以接收消息通知了',
+                        icon: '/vite.svg',
+                      });
+                    }
+                  } catch (error) {
+                    console.error('Failed to request notification permission', error);
                   }
                 }}
                 className={`p-2 hover:bg-slate-700 rounded-lg transition-colors ${
                   notificationPermission === 'granted' ? 'text-green-400' : 'text-slate-400 hover:text-white'
                 }`}
-                title={notificationPermission === 'granted' ? '通知已启用' : '启用通知'}
+                title={notificationPermission === 'granted' ? '通知已启用' : notificationPermission === 'denied' ? '通知已拒绝' : '启用通知'}
               >
                 🔔
               </button>
