@@ -209,7 +209,7 @@ export default function ChatRoom() {
 
   // 后台轮询机制：当页面在后台时，定期检查新消息
   useEffect(() => {
-    let pollingInterval: NodeJS.Timeout | null = null;
+    let pollingInterval: number | null = null;
     let lastUnreadCount = 0;
 
     const checkForNewMessages = async () => {
